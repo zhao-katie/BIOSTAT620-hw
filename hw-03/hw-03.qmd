@@ -1,0 +1,210 @@
+---
+title: "Homework 3"
+author: "Katie Zhao"
+format: html
+editor: visual
+embed-resources: true
+---
+
+## **Text Mining**
+
+**On the course Github, navigate to the page for dataset `pubmed` (<https://github.com/dmcable/BIOSTAT620W26/tree/main/data/pubmed>) and download the `pubmed.csv` dataset. This dataset contains 3,241 abstracts from articles collected via 5 PubMed searches. The search terms are listed in the second column, `term` and these will serve as the “documents.” Your job is to analyze these abstracts to find interesting insights.**
+
+1.  **How many abstracts are associated with each search term? Tokenize the abstracts and count the number of each token. Do you see anything interesting? What are the 5 most common tokens for each search term?**
+
+```{r, message = FALSE}
+library(tidyverse)
+pubmed <- read.csv("pubmed.csv")
+
+table(pubmed$term) %>%
+  as.data.frame() %>% 
+  reframe(Search_Term = Var1,
+            Number_Abstracts = Freq) %>% 
+  arrange(desc(Number_Abstracts)) %>% 
+  knitr::kable(caption = "Number of pubmed.csv Abstracts Associated with Each Search Term") 
+```
+
+```{r}
+## Tokenize the abstracts
+library(tidytext)
+pubmed %>% 
+  unnest_tokens(token, abstract) %>% 
+  count(token) %>% 
+  arrange(desc(n)) %>% 
+  top_n(10, n) %>% 
+  ggplot(aes(x = n, y = fct_reorder(token, n))) +
+  geom_col(fill = "lightblue") +
+  labs(title = "Top 10 Tokens Among all 'pubmed.csv' Abstracts by Appearance",
+       x = "Count",
+       y = "Tokens") +
+  theme_bw()
+  
+```
+
+As expected, among all abstracts in the pubmed.csv dataset, many of the words that made the "Top 10" list were "filler/preposition" words, such as *the, of, and, in, to, a, with,* and *is*. Of note, *covid* and *19* were the only two "unique" words that made this Top 10 list. Generally speaking, this Top 10 list provides no context to the text of tokens from which this list arises from; it could apply to different contexts that all use these similar filler/preposition words.
+
+```{r}
+## Tokenize the abstracts
+library(tidytext)
+pubmed %>% 
+  unnest_tokens(token, abstract) %>% 
+  count(term, token) %>% 
+  group_by(term) %>% 
+  arrange(n, .by_group = TRUE) %>% #technically not necessary, but groups df
+  top_n(5, n) %>% 
+  arrange(desc(n), .by_group = TRUE) %>% 
+  reframe(Search_Term = term, Token = token, Count = n) %>% 
+  select(-term) %>% 
+  knitr::kable(caption = "Top 5 Tokens Among 'pubmed.csv' Abstracts by Appearance, per Search Term")
+```
+
+2.  **(15 points) Does removing stop words change what tokens appear as the most frequent? What are the 5 most common tokens for each search term after removing stop words?**
+
+```{r}
+# Use 'stop_words' table in tidytext
+
+# Most frequent tokens
+pubmed %>% 
+  unnest_tokens(token, abstract) %>% 
+  anti_join(stop_words, c("token" = "word")) %>% 
+  count(token) %>% 
+  top_n(10, n) %>% 
+  ggplot(aes(x = n, y = fct_reorder(token, n))) +
+  geom_col(fill = "lightblue") +
+  labs(title = "Top 10 Tokens Among all 'pubmed.csv' Abstracts by Appearance,\nAfter Removing 'Stop Words'",
+       x = "Count",
+       y = "Tokens") +
+  theme_bw()
+```
+
+After removing the stop words from the set of tokens found in the abstract, the Top 10 Tokens by Appearance list now looks very different from what it did in the Question 1. Now, this list includes many more "domain-specific" words, such as *covid, patients, cancer, prostate, etc.* Before, the Top 10 list could've applied to text from many different contexts, but now, there is a clear sense of that the texts of these tokens originate from a medical/health sciences context.
+
+```{r}
+# Most frequent tokens, by search term
+pubmed %>% 
+  unnest_tokens(token, abstract) %>% 
+  anti_join(stop_words, c("token" = "word")) %>% 
+  count(term, token) %>% 
+  group_by(term) %>% 
+  top_n(5, n) %>% 
+  arrange(desc(n), .by_group = TRUE) %>% 
+  reframe(Search_Term = term, Token = token, Count = n) %>% 
+  select(-term) %>% 
+  knitr::kable(caption = "Top 5 Tokens Among 'pubmed.csv' Abstracts by Appearance, per Search Term, After Removing Stop Words")
+  
+```
+
+Similarly to the Top 10 Tokens list before/after removing stop words, the Top 5 Tokens per Search Term list after removing stop words now is a lot more domain specific in context. Medical terminology, such as *disease, pandemic, meningitis, patients, pregnancy, etc,* are all words that were not seen on this list previously because they were buried under stop words that are commonly used to string text together.
+
+3.  **(15 points) Tokenize the abstracts into bigrams. Find the 10 most common bigrams and visualize them.**
+
+```{r}
+pubmed %>% 
+  unnest_ngrams(ngram, abstract, 2) %>% 
+  count(ngram) %>% 
+  top_n(10, n) %>% 
+  ggplot(aes(x = n, y = fct_reorder(ngram, n))) +
+  geom_col(fill = "lightblue") +
+  labs(title = "Top 10 Bigrams Among All 'pubmed.csv' Abstracts by Appearance",
+       x = "Count",
+       y = "Bigram") +
+  theme_bw()
+```
+
+4.  **(15 points) Calculate the TF-IDF value for each word-search term combination (here you want the search term to be the “document”). What are the 5 tokens from each search term with the highest TF-IDF value? How are the results different from the answers you got in Question 1?**
+
+```{r}
+pubmed %>% 
+  unnest_tokens(token, abstract) %>% 
+  count(term, token) %>% 
+  bind_tf_idf(token, term, n) %>% 
+  group_by(term) %>% 
+  top_n(5, tf_idf) %>% 
+  arrange(desc(tf_idf), .by_group = TRUE) %>% 
+  select(token, term, tf_idf) %>% 
+  knitr::kable(caption = "Top 5 Tokens among 'pubmed.csv' Abstracts by TF_IDF Score, per Search Term")
+
+```
+
+TD-IDF is a measure of a word's importance to a document (abstracts of a given search term) within a larger collection (all other abstracts in dataset).
+
+To a certain extent, this measurement helps "balance out" the frequency ranking of stop terms that commonly appear in a document, but also commonly appear in other documents. For example, in Question 1, the Top 5 tokens in abstracts associated with the *covid* search term include *the, of,* and *and* (stop words). Here, the 5 tokens with the highest TF_IDF scores in abstracts associated with the *covid* search term are *covid, pandemic, coronavirus, sars,* and *cov—*words that are more "domain-specific." This same trend is seen among the other highest scoring TF_IDF tokens of other search terms.
+
+## **Sentiment Analysis**
+
+5.  **(20 points) Perform a sentiment analysis using the NRC lexicon. What is the most common sentiment for each search term? What if you remove `"positive"` and `"negative"` from the list?**
+
+```{r}
+library(textdata)
+
+pubmed %>% 
+  unnest_tokens(word, abstract) %>% 
+  inner_join(get_sentiments("nrc"), by = join_by(word),
+             relationship = "many-to-many") %>% 
+  count(term, sentiment) %>% 
+  group_by(term) %>% 
+  top_n(1, n) %>% 
+  select(-n) %>% 
+  knitr::kable(caption = "Most Common Sentiment Associated with Each Search Term")
+```
+
+The most common sentiments associated with each search term are "positive" and "negative."
+
+```{r}
+# Remove "positive" and "negative" assocations from sentiment
+nrc_subset <- get_sentiments("nrc") %>% 
+  filter(sentiment != "positive",
+         sentiment != "negative")
+
+pubmed %>% 
+  unnest_tokens(word, abstract) %>% 
+  inner_join(nrc_subset, by = join_by(word),
+             relationship = "many-to-many") %>% 
+  count(term, sentiment) %>% 
+  group_by(term) %>% 
+  top_n(1, n) %>% 
+  select(-n) %>% 
+  knitr::kable(caption = "Most Common Sentiment Associated with Each Search Term, Excluding 'Positive' and 'Negative'")
+```
+
+Once "positive" and "negative" sentiments are removed from the NRC lexicon, the top sentiment seen across the covid, meningitis, and prostate cancer terms is "fear." "Digust" and "anticipation" are the top sentiments seen for cystic fribrosis and preeclampsia, respectively.
+
+6.  **(20 points) Now perform a sentiment analysis using the AFINN lexicon [to get an average positivity score for each abstract]{.underline} (hint: you may want to create a variable that indexes, or counts, the abstracts). Create a visualization that shows these scores grouped by search term. Are any search terms noticeably different from the others?**
+
+```{r, message = FALSE}
+figa <- pubmed %>% 
+  mutate(abstract_num = c(1:dim(pubmed)[1])) %>%
+  relocate(abstract_num, .before = "abstract") %>%
+  unnest_tokens(word, abstract) %>%
+  inner_join(get_sentiments("afinn")) %>%
+  group_by(abstract_num, term) %>%
+  summarize(mean_score_abstract = mean(value)) %>%
+  ggplot(aes(x = mean_score_abstract)) +
+  geom_histogram(fill = "blue") +
+  facet_wrap(~term) +
+  labs(x = "Mean Positivity Score",
+       y = "Count",
+       title = "Figure A: Distribution of Mean\nPositivity Scores for Each Abstract,\nby Search Term") +
+  theme_bw()
+
+figb <- pubmed %>% 
+  mutate(abstract_num = c(1:dim(pubmed)[1])) %>%
+  relocate(abstract_num, .before = "abstract") %>%
+  unnest_tokens(word, abstract) %>%
+  inner_join(get_sentiments("afinn")) %>%
+  group_by(abstract_num, term) %>%
+  summarize(mean_score_abstract = mean(value)) %>%
+  ggplot(aes(x = term, y = mean_score_abstract)) +
+  geom_boxplot(fill = "blue") +
+  labs(x = "Mean Positivity Score",
+       y = "Count",
+       title = "Figure B: Distribution of Mean\n Positivity Scores for Each Abstract,\nby Search Term") +
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+cowplot::plot_grid(figa, figb)
+```
+
+Looking at Figure A, the "covid" and "preeclampsia" terms have a similar distribution of average positivity scores for abstracts. The distribution of scores for the abstracts corresponding to these search terms are both centered around 0 with somewhat "normal curve"-esque distributions. The "cystic fibrosis" and "meningitis" also have similar distributions. They are "flatter" and "wider" in their distributions of mean positivity scores of their abstracts, appearing to cover a larger range of scores compared to than the other terms. The "prostate cancer" search term stands out among the other distributions. While it also appears to have abstracts with a normal-curve distribution of mean positivity scores, it has a tighter distribution around 0 (smaller standard deviation) compared to the "covid" and "preeclampsia" terms.
+
+**Figure B shows further facets of the distributions of Figure A, showing that the average "mean positivity scores of abstracts" of the cystic fibrosis term is noticeably higher than the other terms.** The prostate cancer search term has the smallest range of mean abstract positivity scores, and meningitis has the largest range.
